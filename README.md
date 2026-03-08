@@ -2,7 +2,45 @@
 
 A personal AI agent that lives in Telegram. Powered by Google Gemini, it manages your email, calendar, contacts, and memory — and learns about you over time.
 
-Runs on a Raspberry Pi (or any machine). Self-hosted, privacy-first, extensible.
+Runs on a Raspberry Pi 5 (4GB RAM is enough). Self-hosted, privacy-first, extensible.
+
+## Why Eurisco
+
+Most AI assistant projects (including OpenClaw, which inspired parts of this architecture) focus on making the LLM smarter at tasks — better prompts, better tool use, better workflows. Eurisco does that too, but its real differentiator is **people memory**.
+
+**The problem**: Every AI assistant treats each conversation as isolated. They don't know who you emailed last week, who you're meeting tomorrow, or that the person you're about to call hasn't replied in 45 days. Your relationships — the most important part of your professional and personal life — are invisible to them.
+
+**What Eurisco does differently**:
+- **Builds a living database of every person you interact with** — automatically, from your email. Names, roles, organisations, topics discussed, interaction timeline, and connections between people.
+- **Learns passively** — after every conversation, it extracts insights about your travel, interests, work, health, and relationships. It remembers that you prefer window seats, that your colleague Priya is working on the STEMI project, and that you haven't spoken to your college friend in 3 months.
+- **Surfaces context before you ask** — before a meeting, it can pull up everything it knows about the attendees. When you search for a flight, it already knows your airline preferences.
+- **Tracks relationship health** — contacts are classified as hot (< 14 days), active (< 30 days), or cold (> 90 days). The morning briefing flags follow-ups that are going stale.
+
+### How it compares to OpenClaw
+
+| | OpenClaw | Eurisco |
+|---|---------|---------|
+| **Focus** | General-purpose skill framework | Personal assistant with relationship intelligence |
+| **Skills** | YAML frontmatter, workspace/managed/bundled tiers | TypeScript modules, single registry, flat structure |
+| **Memory** | Three-tier (workspace/project/conversation) | Two-tier (daily markdown logs + SQLite FTS5 search) + people DB |
+| **People** | None | Full CRM — auto-built from email, web-verified, with interaction tracking |
+| **Inference** | Cloud-only | Optimised for Raspberry Pi (API-bound, not CPU-bound) |
+| **Channel** | IDE/CLI | Telegram (mobile + desktop, voice messages) |
+| **Composition** | Agent-level (LLM decides) | Same — skills never call each other, LLM composes |
+
+We borrowed OpenClaw's best idea: skills as prompt injection, not code coupling. But we went further on the personal intelligence side — the people database, passive learning, and relationship tracking are what make Eurisco feel like it actually knows you.
+
+### Optimised for Raspberry Pi
+
+Eurisco is designed to run 24/7 on a Raspberry Pi 5 with just 4GB RAM. This works because:
+
+- **The bottleneck is the API, not the CPU.** Gemini API calls account for 80-98% of response time. A Pi performs identically to a MacBook — the network round-trip dominates everything.
+- **SQLite, not Postgres.** The people database and memory search use better-sqlite3 with FTS5. No database server, no memory overhead, no config.
+- **No heavy dependencies.** No Python, no Docker, no vector databases. Just Node.js, TypeScript, and a few npm packages.
+- **Smart model routing.** Simple queries use Gemini Flash (fast, cheap). Complex queries use Gemini Pro. You control the split.
+- **Context pruning.** Old tool results are automatically trimmed. History is capped at 80 turns with pre-compaction memory flush so nothing important is lost.
+
+Total idle memory: ~60MB. Peak during a complex query: ~120MB.
 
 ## What It Does
 
@@ -10,17 +48,17 @@ Runs on a Raspberry Pi (or any machine). Self-hosted, privacy-first, extensible.
 - **Calendar** — List and create Google Calendar events
 - **Flights** — Search flights via Amadeus API
 - **Memory** — Remembers your preferences, plans, and conversations
-- **People** — Tracks your contacts, relationships, and follow-ups
+- **People** — Builds a CRM from your email — tracks contacts, relationships, follow-ups, and connections between people
 - **Voice** — Transcribes voice messages and responds
-- **Morning Briefing** — Daily digest of unread emails, today's calendar, and due follow-ups
-- **Deep Search** — Parallel search across email, memory, people, and web
+- **Morning Briefing** — Daily Telegram digest of unread emails, today's calendar, and stale follow-ups
+- **Deep Search** — Parallel search across email, memory, people, and web in a single tool call
 
 ## Quick Start
 
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-username/eurisco.git
+git clone https://github.com/drcharit/eurisco.git
 cd eurisco
 npm install
 ```
