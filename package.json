@@ -1,0 +1,32 @@
+{
+  "name": "eurisco",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Personal AI agent for Telegram — email, calendar, memory, flights, and more. Powered by Gemini.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drcharit/eurisco.git"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch & node --watch dist/index.js",
+    "test": "node --test dist/**/*.test.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "better-sqlite3": "^11.8.0",
+    "googleapis": "^144.0.0",
+    "grammy": "^1.35.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.12.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  }
+}

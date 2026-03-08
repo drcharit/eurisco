@@ -1,0 +1,31 @@
+node_modules/
+dist/
+
+# Credentials
+.env
+.env.local
+.env.*.local
+
+# Database and conversation history
+data/
+
+# Personal workspace data
+workspace/people/
+workspace/memory/
+
+# Keep SOUL.md (persona template) but not personal data
+!workspace/SOUL.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project memory (Claude Code / dev only)
+Kala.MD
+memory.MD

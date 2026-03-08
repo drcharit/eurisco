@@ -1,0 +1,16 @@
+{
+  "activeHours": { "start": 6, "end": 23 },
+  "heartbeatIntervalMinutes": 60,
+  "morningBriefingCron": "57 5 * * *",
+  "maxAgentIterations": 25,
+  "maxRetries": 3,
+  "models": {
+    "fast": "gemini-2.5-flash",
+    "smart": "gemini-2.5-pro"
+  },
+  "followUpThresholds": {
+    "hotDays": 14,
+    "activeDays": 30,
+    "coldDays": 90
+  }
+}

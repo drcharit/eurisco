@@ -1,0 +1,3 @@
+- Check email for urgent messages (patient alerts, critical issues) across all accounts
+- Check if any calendar events are coming up in the next 2 hours
+- Reply HEARTBEAT_OK if nothing needs immediate attention
