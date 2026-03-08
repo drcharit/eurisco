@@ -42,7 +42,8 @@ async function main(): Promise<void> {
   }
 
   console.log(`Accounts: ${ownerEmails.join(", ")}`);
-  console.log(`Excluding: @tricog.com (internal)`);
+  const ownerDomain = ownerEmails[0]?.split("@")[1] ?? "unknown";
+  console.log(`Excluding: @${ownerDomain} (internal)`);
   console.log(`Filter: bidirectional only (sent + received)`);
 
   // Phase 1: Scan last 2 years

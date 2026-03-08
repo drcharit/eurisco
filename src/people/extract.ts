@@ -110,8 +110,9 @@ export async function scanAndFilter(
 
       // Skip owner
       if (ownerSet.has(email)) continue;
-      // Skip tricog.com (internal)
-      if (email.endsWith("@tricog.com")) continue;
+      // Skip internal domain (same as owner's email domain)
+      const ownerDomain = Array.from(ownerSet)[0]?.split("@")[1];
+      if (ownerDomain && email.endsWith(`@${ownerDomain}`)) continue;
       // Skip noise
       if (isNoiseEmail(email)) continue;
 
@@ -304,7 +305,7 @@ export async function analyzeWithLLM(
 ): Promise<Partial<PersonProfile> | null> {
   const emailsText = emailBodies.slice(0, 8).join("\n\n---EMAIL BREAK---\n\n");
 
-  const prompt = `You are building a personal CRM. Analyze these emails between Charit (the owner) and ${candidate.name} (${candidate.email}).
+  const prompt = `You are building a personal CRM. Analyze these emails between the owner and ${candidate.name} (${candidate.email}).
 
 EMAILS:
 ${emailsText}
@@ -314,7 +315,7 @@ Extract the following as JSON (no markdown fences, no explanation):
   "name": "Their proper full name (clean, no quotes, no email artifacts)",
   "org": "Their current organization (from signature, domain, or context)",
   "role": "Their job title (from signature or context)",
-  "howWeConnected": "One paragraph describing how Charit and this person first connected — what was the context, who introduced them, what brought them together. Write in third person.",
+  "howWeConnected": "One paragraph describing how the owner and this person first connected — what was the context, who introduced them, what brought them together. Write in third person.",
   "topics": ["specific topics/projects they discussed — be concrete, not generic"],
   "personalDetails": ["any personal information: family, hobbies, location, travel, health, preferences, birthdays"],
   "timeline": [{"date": "YYYY-MM-DD", "summary": "what happened"}],
@@ -483,8 +484,8 @@ Rules:
 // Step 6: Profile Generation — Obsidian Markdown
 // ────────────────────────────────────────────────────────────
 
-const OBSIDIAN_PEOPLE = "/Users/cb/Documents/Obsidian Vault/people";
-const OBSIDIAN_UNVERIFIED = "/Users/cb/Documents/Obsidian Vault/people-unverified";
+const OBSIDIAN_PEOPLE = process.env["OBSIDIAN_PEOPLE_DIR"] ?? "./workspace/people/profiles";
+const OBSIDIAN_UNVERIFIED = process.env["OBSIDIAN_PEOPLE_DIR"] ? `${process.env["OBSIDIAN_PEOPLE_DIR"]}-unverified` : "./workspace/people/profiles-unverified";
 
 export function writeObsidianProfile(
   profile: PersonProfile
