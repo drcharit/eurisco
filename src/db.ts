@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
 
 function migrateSchema(db: Database.Database): void {
@@ -14,6 +14,7 @@ function migrateSchema(db: Database.Database): void {
     ["linkedin_url", "TEXT"],
     ["next_followup", "TEXT"],
     ["personal_notes", "TEXT"],
+    ["type", "TEXT"],
   ];
 
   for (const [name, type] of newCols) {
@@ -25,7 +26,12 @@ function migrateSchema(db: Database.Database): void {
 
 export function openDatabase(dataDir: string): Database.Database {
   mkdirSync(dataDir, { recursive: true });
-  const dbPath = resolve(dataDir, "kit.db");
+  // Migrate from old name
+  const oldPath = resolve(dataDir, "kit.db");
+  const dbPath = resolve(dataDir, "eurisco.db");
+  if (!existsSync(dbPath) && existsSync(oldPath)) {
+    renameSync(oldPath, dbPath);
+  }
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
@@ -129,6 +135,40 @@ function initSchema(db: Database.Database): void {
       message_id TEXT PRIMARY KEY,
       account TEXT NOT NULL,
       processed_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    -- Track processed calendar events (for incremental runs)
+    CREATE TABLE IF NOT EXISTS processed_calendar_events (
+      event_id TEXT NOT NULL,
+      account TEXT NOT NULL,
+      processed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (event_id, account)
+    );
+
+    -- Strava workouts
+    CREATE TABLE IF NOT EXISTS workouts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      strava_id INTEGER UNIQUE NOT NULL,
+      date TEXT NOT NULL,
+      name TEXT,
+      strava_type TEXT NOT NULL,
+      workout_type TEXT,
+      distance_km REAL,
+      moving_time_sec INTEGER,
+      elapsed_time_sec INTEGER,
+      pace_per_km TEXT,
+      pace_decimal REAL,
+      avg_heartrate REAL,
+      max_heartrate REAL,
+      avg_cadence REAL,
+      total_elevation REAL,
+      calories REAL,
+      splits_json TEXT,
+      laps_json TEXT,
+      hr_zones_json TEXT,
+      synced_to_sheet INTEGER DEFAULT 0,
+      analysis_synced INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
   `);
 }

@@ -107,7 +107,7 @@ npx pm2 save
 
 ## Configuration
 
-### config/kit.json
+### config/eurisco.json
 
 ```json
 {
@@ -145,7 +145,7 @@ This is your bot's personality and instructions. It's loaded into the system pro
 ```
 src/
 ├── index.ts              # Entry point
-├── config.ts             # Config loader (.env + kit.json)
+├── config.ts             # Config loader (.env + eurisco.json)
 ├── db.ts                 # SQLite database
 ├── agent/
 │   ├── loop.ts           # Agent loop (chat + tool execution + streaming)

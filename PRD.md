@@ -2,9 +2,9 @@
 
 ## Overview
 
-**Eurisco** is a personal AI assistant that runs as a Telegram bot, powered by Google's Gemini API. It acts as an intelligent agent — not a chatbot — that can search your email, manage your calendar, track your contacts, remember your preferences, and proactively help you stay on top of your life.
+**Eurisco** is a personal AI system that acts as an intelligent agent — not a chatbot — that can search your email, manage your calendar, track your contacts, remember your preferences, and proactively help you stay on top of your life. Powered by Google's Gemini API.
 
-**Kit** is the Telegram bot interface to Eurisco.
+**Kit** is the Telegram bot interface to Eurisco (@eurisco_bot).
 
 ## Problem Statement
 

@@ -1,5 +1,5 @@
 import type { Content } from "@google/generative-ai";
-import { readFileSync, appendFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const MAX_HISTORY = 80;

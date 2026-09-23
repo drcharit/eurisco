@@ -94,12 +94,34 @@ export const knowledgeSkill: Skill = {
         required: ["name", "source", "summary"],
       },
     },
+    {
+      name: "web_search",
+      description: "Search the web for current information. Use for general knowledge, news, reviews, prices. Returns titles, URLs, and snippets.",
+      parameters: {
+        type: S.OBJECT,
+        properties: { query: { type: S.STRING, description: "Search query" } },
+        required: ["query"],
+      },
+    },
+    {
+      name: "web_fetch",
+      description: "Fetch and extract text content from a URL. Use to read a specific web page.",
+      parameters: {
+        type: S.OBJECT,
+        properties: { url: { type: S.STRING, description: "URL to fetch" } },
+        required: ["url"],
+      },
+    },
   ] as FunctionDeclaration[],
 
   createHandlers(ctx: ToolContext) {
     return {
       deep_search: (args: Record<string, unknown>) =>
         deepSearch(ctx, args["query"] as string, args["sources"] as string[] | undefined),
+
+      web_search: (args: Record<string, unknown>) => webSearch(args["query"] as string),
+
+      web_fetch: (args: Record<string, unknown>) => webFetch(args["url"] as string),
 
       memory_search: (args: Record<string, unknown>) => {
         const results = searchMemory(ctx.db, args["query"] as string);

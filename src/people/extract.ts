@@ -15,7 +15,8 @@ import { google } from "googleapis";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type Database from "better-sqlite3";
 import type { GoogleAccount } from "../services/google-auth.js";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 // ────────────────────────────────────────────────────────────
@@ -48,14 +49,25 @@ export interface Candidate {
   coEmails: Set<string>; // other external emails that appear in same threads
 }
 
+export const PERSON_TYPES = [
+  "investor", "vc", "founder", "ceo", "cxo", "board-member",
+  "lawyer", "doctor", "banker", "consultant", "academic",
+  "government", "family", "personal-friend", "journalist",
+  "engineer", "sales", "partner", "other",
+] as const;
+
+export type PersonType = typeof PERSON_TYPES[number];
+
 export interface PersonProfile {
   name: string;
   email: string;
   org: string;
   role: string;
+  type: PersonType;
   location: string;
   linkedinUrl: string;
-  about: string;           // narrative paragraph from web + LLM
+  photoPath: string;        // local path to downloaded photo
+  about: string;            // narrative paragraph from web + LLM
   howWeConnected: string;   // narrative of first interaction
   topics: string[];
   personalDetails: string[];
@@ -63,6 +75,7 @@ export interface PersonProfile {
   connectedWith: string[];  // names of connected people
   firstContact: string;
   lastContact: string;
+  nextReachout: string;     // calculated follow-up date
   verified: boolean;
 }
 
@@ -305,7 +318,8 @@ export async function analyzeWithLLM(
 ): Promise<Partial<PersonProfile> | null> {
   const emailsText = emailBodies.slice(0, 8).join("\n\n---EMAIL BREAK---\n\n");
 
-  const prompt = `You are building a personal CRM. Analyze these emails between the owner and ${candidate.name} (${candidate.email}).
+  const typesList = PERSON_TYPES.join(", ");
+  const prompt = `You are an intelligence analyst building a comprehensive dossier. Analyze these emails between the owner and ${candidate.name} (${candidate.email}).
 
 EMAILS:
 ${emailsText}
@@ -314,21 +328,56 @@ Extract the following as JSON (no markdown fences, no explanation):
 {
   "name": "Their proper full name (clean, no quotes, no email artifacts)",
   "org": "Their current organization (from signature, domain, or context)",
-  "role": "Their job title (from signature or context)",
-  "howWeConnected": "One paragraph describing how the owner and this person first connected — what was the context, who introduced them, what brought them together. Write in third person.",
-  "topics": ["specific topics/projects they discussed — be concrete, not generic"],
-  "personalDetails": ["any personal information: family, hobbies, location, travel, health, preferences, birthdays"],
-  "timeline": [{"date": "YYYY-MM-DD", "summary": "what happened"}],
+  "role": "Their exact job title (from signature or context)",
+  "type": "one of: ${typesList}",
+  "location": "City, Country if mentioned or inferable from email signatures, timezone, or context",
+  "howWeConnected": "One detailed paragraph: how the owner first connected with this person, the context, who introduced them, what brought them together. Be specific about dates and circumstances.",
+  "topics": ["specific topics/projects discussed — project names, deal names, product names, company names, NOT generic words"],
+  "personalDetails": ["Extract EVERYTHING personal mentioned anywhere in the emails"],
+  "timeline": [{"date": "YYYY-MM-DD", "summary": "what happened — be specific"}],
   "isPerson": true/false
 }
 
+Classification rules for "type":
+- "investor" — angel investor or individual investing personal capital
+- "vc" — works at a venture capital firm (partner, associate, principal, analyst)
+- "founder" — founded or co-founded a company
+- "ceo" / "cxo" — C-level executive (CEO, CTO, COO, CFO, CMO)
+- "board-member" — sits on a board of directors
+- "lawyer" — legal professional, attorney, law firm partner
+- "doctor" — medical professional, physician, surgeon
+- "banker" — investment banker, commercial banker, financial institution
+- "consultant" — advisory, consulting firm, independent consultant
+- "academic" — professor, researcher, university affiliated
+- "government" — government official, regulatory body, public sector
+- "family" — family member, spouse, relative
+- "personal-friend" — personal contact not in professional context
+- "journalist" — reporter, media, press
+- "engineer" — technical role, developer, engineer
+- "sales" — sales, business development, account management
+- "partner" — business partner, strategic partner, firm partner
+- "other" — none of the above
+
+Personal details — look for ALL of the following in EVERY email:
+- Family: spouse name, children, parents, siblings, any family mentions
+- Birthday, age, anniversary dates
+- Location: where they live, where they're from, recent moves
+- Education: schools, degrees, alma mater
+- Hobbies: sports, music, art, reading, travel preferences
+- Travel: trips mentioned, travel plans, favorite destinations
+- Food & drink: restaurants, cuisines, dietary preferences, alcohol preferences
+- Health: any health mentions, fitness routines, medical conditions
+- Religion, culture, languages spoken
+- Pets, car, house, lifestyle details
+- Personality traits, communication style preferences
+- Charitable interests, social causes
+
 Rules:
-- "isPerson" should be false if this is a company, service, mailing list, or automated sender
-- For "name", extract the real human name — clean up any email artifacts, quotes, brackets
-- For "howWeConnected", write a natural paragraph. If unclear, say "Connected via email" with whatever context exists
-- For "topics", be specific: project names, deal names, technologies, not generic words like "meeting" or "discussion"
-- For "personalDetails", only include genuinely personal info mentioned in the emails
-- For "timeline", include the most significant interactions (max 10), not every email
+- "isPerson" must be false for companies, services, mailing lists, automated senders, or generic role-based emails (care@, support@, team@)
+- For "name", extract the real human name — clean up email artifacts, quotes, brackets
+- For "timeline", include up to 15 most significant interactions with specific details
+- For "location", check email signatures, timezone references, meeting locations
+- A person can have multiple types — pick the PRIMARY one based on how they interact with the owner
 - If no useful data can be extracted, set isPerson to false`;
 
   try {
@@ -410,6 +459,80 @@ export async function webVerify(
   }
 
   return result;
+}
+
+// ────────────────────────────────────────────────────────────
+// Photo Fetching — Gravatar + fallback
+// ────────────────────────────────────────────────────────────
+
+const PHOTO_DIR = process.env["OBSIDIAN_PEOPLE_DIR"]
+  ? resolve(process.env["OBSIDIAN_PEOPLE_DIR"], "attachments")
+  : "./workspace/people/attachments";
+
+async function fetchPhoto(name: string, email: string): Promise<string> {
+  mkdirSync(PHOTO_DIR, { recursive: true });
+  const safeName = name.replace(/[/\\:*?"<>|]/g, "-").replace(/\s+/g, "-").trim();
+  const filePath = resolve(PHOTO_DIR, `${safeName}.jpg`);
+
+  if (existsSync(filePath)) return filePath;
+
+  // Try Gravatar (MD5 hash of lowercase trimmed email)
+  const hash = createHash("md5").update(email.trim().toLowerCase()).digest("hex");
+  const gravatarUrl = `https://www.gravatar.com/avatar/${hash}?s=200&d=404`;
+
+  try {
+    const res = await fetch(gravatarUrl, { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      writeFileSync(filePath, buf);
+      console.log(`[photo] Gravatar found for ${name}`);
+      return filePath;
+    }
+  } catch {
+    // Gravatar failed, continue
+  }
+
+  return "";
+}
+
+// ────────────────────────────────────────────────────────────
+// Next Reachout Calculation
+// ────────────────────────────────────────────────────────────
+
+function calculateNextReachout(type: PersonType, lastContact: string): string {
+  const intervalDays: Record<PersonType, number> = {
+    "investor": 90,
+    "vc": 90,
+    "founder": 60,
+    "ceo": 60,
+    "cxo": 60,
+    "board-member": 90,
+    "lawyer": 120,
+    "doctor": 180,
+    "banker": 90,
+    "consultant": 60,
+    "academic": 120,
+    "government": 120,
+    "family": 14,
+    "personal-friend": 30,
+    "journalist": 60,
+    "engineer": 60,
+    "sales": 45,
+    "partner": 30,
+    "other": 90,
+  };
+
+  const days = intervalDays[type] ?? 90;
+  const last = new Date(lastContact);
+  if (isNaN(last.getTime())) return "";
+  const next = new Date(last.getTime() + days * 86400000);
+
+  // If the calculated date is in the past, set it to today + a short buffer
+  const now = new Date();
+  if (next < now) {
+    return new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+  }
+  return next.toISOString().slice(0, 10);
 }
 
 async function safeWebSearch(query: string): Promise<string> {
@@ -509,18 +632,28 @@ export function writeObsidianProfile(
   lines.push(`name: "${esc(profile.name)}"`);
   if (profile.org) lines.push(`org: "${esc(profile.org)}"`);
   if (profile.role) lines.push(`role: "${esc(profile.role)}"`);
+  if (profile.type) lines.push(`type: "${profile.type}"`);
   if (profile.location) lines.push(`location: "${esc(profile.location)}"`);
   lines.push(`email: "${profile.email}"`);
   if (profile.linkedinUrl) lines.push(`linkedin: "${profile.linkedinUrl}"`);
   lines.push(`first_contact: ${profile.firstContact}`);
   lines.push(`last_contact: ${profile.lastContact}`);
+  if (profile.nextReachout) lines.push(`next_reachout: ${profile.nextReachout}`);
   lines.push(`status: ${status}`);
 
   const tags = ["person"];
+  if (profile.type) tags.push(`type/${profile.type}`);
   if (profile.org) tags.push(`org/${slugifyTag(profile.org)}`);
   lines.push(`tags: [${tags.join(", ")}]`);
   lines.push("---");
   lines.push("");
+
+  // Photo
+  if (profile.photoPath) {
+    const photoFilename = profile.photoPath.split("/").pop() ?? "";
+    lines.push(`![[${photoFilename}]]`);
+    lines.push("");
+  }
 
   // About
   if (profile.about) {
@@ -561,6 +694,14 @@ export function writeObsidianProfile(
       const cSafe = c.replace(/[/\\:*?"<>|]/g, "-").trim();
       lines.push(`- [[${cSafe}]]`);
     }
+    lines.push("");
+  }
+
+  // Next Reachout
+  if (profile.nextReachout) {
+    const overdue = new Date(profile.nextReachout) < new Date();
+    lines.push("## Next Reachout");
+    lines.push(`**${profile.nextReachout}**${overdue ? " ⚠️ OVERDUE" : ""}`);
     lines.push("");
   }
 
@@ -622,14 +763,25 @@ export async function processPerson(
   await sleep(1500); // Rate limit web searches
   const webResult = await webVerify(cleanName, candidate.email, extracted.org ?? "");
 
+  // Fetch photo
+  const photoPath = await fetchPhoto(cleanName, candidate.email);
+
+  // Determine type from LLM extraction
+  const extractedType = (extracted as Record<string, unknown>)["type"] as string ?? "other";
+  const personType: PersonType = PERSON_TYPES.includes(extractedType as PersonType)
+    ? (extractedType as PersonType)
+    : "other";
+
   // Step 5: Build profile
   const profile: PersonProfile = {
     name: cleanName,
     email: candidate.email,
     org: extracted.org ?? "",
     role: extracted.role ?? "",
-    location: webResult.location || "",
+    type: personType,
+    location: extracted.location || webResult.location || "",
     linkedinUrl: webResult.linkedinUrl || "",
+    photoPath,
     about: "",
     howWeConnected: (extracted as Record<string, unknown>)["howWeConnected"] as string ?? "",
     topics: extracted.topics ?? [],
@@ -638,6 +790,7 @@ export async function processPerson(
     connectedWith: buildConnections(candidate, allCandidates),
     firstContact: candidate.firstDate,
     lastContact: candidate.lastDate,
+    nextReachout: calculateNextReachout(personType, candidate.lastDate),
     verified: webResult.verified,
   };
 
@@ -688,18 +841,18 @@ function saveToDb(db: Database.Database, profile: PersonProfile): void {
 
   if (existing) {
     db.prepare(`
-      UPDATE people SET name=?, email=?, org=?, role=?, first_contact_date=?,
-        first_contact_source='email', linkedin_url=?, personal_notes=?, updated_at=unixepoch()
+      UPDATE people SET name=?, email=?, org=?, role=?, type=?, first_contact_date=?,
+        first_contact_source='email', linkedin_url=?, next_followup=?, personal_notes=?, updated_at=unixepoch()
       WHERE id=?
-    `).run(profile.name, profile.email, profile.org, profile.role,
-      profile.firstContact, profile.linkedinUrl,
+    `).run(profile.name, profile.email, profile.org, profile.role, profile.type,
+      profile.firstContact, profile.linkedinUrl, profile.nextReachout,
       profile.personalDetails.join("\n"), existing.id);
   } else {
     const result = db.prepare(`
-      INSERT INTO people (name, email, org, role, slug, first_contact_date, first_contact_source, linkedin_url, personal_notes)
-      VALUES (?, ?, ?, ?, ?, ?, 'email', ?, ?)
-    `).run(profile.name, profile.email, profile.org, profile.role, slug,
-      profile.firstContact, profile.linkedinUrl, profile.personalDetails.join("\n"));
+      INSERT INTO people (name, email, org, role, type, slug, first_contact_date, first_contact_source, linkedin_url, next_followup, personal_notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'email', ?, ?, ?)
+    `).run(profile.name, profile.email, profile.org, profile.role, profile.type, slug,
+      profile.firstContact, profile.linkedinUrl, profile.nextReachout, profile.personalDetails.join("\n"));
 
     const personId = result.lastInsertRowid as number;
     db.prepare("INSERT OR IGNORE INTO people_fts (rowid, name, org, role) VALUES (?, ?, ?, ?)")

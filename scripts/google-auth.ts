@@ -16,6 +16,7 @@ const REDIRECT_URI = "http://localhost:3456/callback";
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/spreadsheets",
 ];
 
 const oauth2 = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);

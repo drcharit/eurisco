@@ -16,6 +16,15 @@ export interface Config {
   googleAccounts: GoogleAccountConfig[];
   amadeusClientId: string;
   amadeusClientSecret: string;
+  tuyaIrBlasterIp: string;
+  tuyaIrBlasterKey: string;
+  tuyaCloudAccessId: string;
+  tuyaCloudAccessSecret: string;
+  tuyaIrDeviceId: string;
+  tuyaAcDeviceId: string;
+  tuyaPlugIp: string;
+  tuyaPlugKey: string;
+  tuyaPlugDeviceId: string;
   activeHours: { start: number; end: number };
   heartbeatIntervalMinutes: number;
   morningBriefingCron: string;
@@ -23,6 +32,11 @@ export interface Config {
   maxRetries: number;
   models: { fast: string; smart: string };
   followUpThresholds: { hotDays: number; activeDays: number; coldDays: number };
+  stravaClientId: string;
+  stravaClientSecret: string;
+  stravaRefreshToken: string;
+  stravaSheetId: string;
+  stravaSyncCron: string;
   dataDir: string;
   workspaceDir: string;
 }
@@ -60,8 +74,8 @@ export function loadConfig(rootDir: string): Config {
     }
   }
 
-  const kitJsonPath = resolve(rootDir, "config", "kit.json");
-  const kitJson = JSON.parse(readFileSync(kitJsonPath, "utf-8"));
+  const jsonPath = resolve(rootDir, "config", "eurisco.json");
+  const kitJson = JSON.parse(readFileSync(jsonPath, "utf-8"));
 
   return {
     geminiApiKey: requireEnv("GEMINI_API_KEY"),
@@ -72,6 +86,15 @@ export function loadConfig(rootDir: string): Config {
     googleAccounts: loadGoogleAccounts(),
     amadeusClientId: process.env["AMADEUS_CLIENT_ID"] ?? "",
     amadeusClientSecret: process.env["AMADEUS_CLIENT_SECRET"] ?? "",
+    tuyaIrBlasterIp: process.env["TUYA_IR_BLASTER_IP"] ?? "",
+    tuyaIrBlasterKey: process.env["TUYA_IR_BLASTER_KEY"] ?? "",
+    tuyaCloudAccessId: process.env["TUYA_ACCESS_ID"] ?? "",
+    tuyaCloudAccessSecret: process.env["TUYA_ACCESS_SECRET"] ?? "",
+    tuyaIrDeviceId: process.env["TUYA_IR_DEVICE_ID"] ?? "",
+    tuyaAcDeviceId: process.env["TUYA_AC_DEVICE_ID"] ?? "",
+    tuyaPlugIp: process.env["TUYA_PLUG_IP"] ?? "",
+    tuyaPlugKey: process.env["TUYA_PLUG_KEY"] ?? "",
+    tuyaPlugDeviceId: process.env["TUYA_PLUG_DEVICE_ID"] ?? "",
     activeHours: kitJson.activeHours,
     heartbeatIntervalMinutes: kitJson.heartbeatIntervalMinutes,
     morningBriefingCron: kitJson.morningBriefingCron,
@@ -79,6 +102,11 @@ export function loadConfig(rootDir: string): Config {
     maxRetries: kitJson.maxRetries,
     models: kitJson.models,
     followUpThresholds: kitJson.followUpThresholds,
+    stravaClientId: process.env["STRAVA_CLIENT_ID"] ?? "",
+    stravaClientSecret: process.env["STRAVA_CLIENT_SECRET"] ?? "",
+    stravaRefreshToken: process.env["STRAVA_REFRESH_TOKEN"] ?? "",
+    stravaSheetId: process.env["STRAVA_SHEET_ID"] ?? "",
+    stravaSyncCron: kitJson.stravaSyncCron ?? "0 */2 * * *",
     dataDir: resolve(rootDir, "data"),
     workspaceDir: resolve(rootDir, "workspace"),
   };

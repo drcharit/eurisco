@@ -1,7 +1,8 @@
 import { Bot } from "grammy";
 import type { Config } from "../config.js";
 import type { AgentDeps } from "../agent/loop.js";
-import { agentLoop, routeModel, reflect, backgroundFlush, transcribeAudio } from "../agent/loop.js";
+import { agentLoop, routeModel, backgroundFlush, transcribeAudio } from "../agent/loop.js";
+
 import { clearHistory } from "../agent/history.js";
 import { downloadVoice } from "./voice.js";
 
@@ -10,6 +11,11 @@ const STREAM_UPDATE_MS = 1000;
 
 export function createBot(config: Config, agentDeps: AgentDeps): Bot {
   const bot = new Bot(config.telegramBotToken);
+
+  // Catch bot-level errors (409 conflicts, network issues) — log, don't crash
+  bot.catch((err) => {
+    console.error(`[telegram] Bot error: ${err.message}`);
+  });
 
   // Message queue to prevent concurrent agent loops
   let processing = false;
@@ -89,8 +95,7 @@ export function createBot(config: Config, agentDeps: AgentDeps): Bot {
           console.log(`[perf] TURN TOTAL: ${(performance.now() - turnStart).toFixed(0)}ms | len=${reply.length}`);
 
           // Background tasks — don't block the user
-          backgroundFlush(agentDeps).catch(() => {});
-          reflect(agentDeps).catch(() => {});
+          backgroundFlush().catch(() => {});
         } catch (e) {
           const err = e as Error;
           await ctx.api.deleteMessage(chatId, status.message_id).catch(() => {});
@@ -141,9 +146,7 @@ export function createBot(config: Config, agentDeps: AgentDeps): Bot {
         // Include transcription in the final response
         await sendChunked(ctx, `_${transcription}_\n\n${reply}`);
 
-        // Background tasks
-        backgroundFlush(agentDeps).catch(() => {});
-        reflect(agentDeps).catch(() => {});
+        backgroundFlush().catch(() => {});
       } catch (e) {
         const err = e as Error;
         await ctx.api.deleteMessage(ctx.chat.id, status.message_id).catch(() => {});

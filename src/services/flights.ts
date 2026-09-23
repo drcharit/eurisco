@@ -63,6 +63,7 @@ export async function searchFlights(
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) {

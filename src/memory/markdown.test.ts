@@ -23,8 +23,8 @@ describe("MarkdownMemory", () => {
   });
 
   it("reads SOUL.md when present", () => {
-    writeFileSync(resolve(TEST_DIR, "SOUL.md"), "You are Kit.");
-    assert.equal(mem.readSoul(), "You are Kit.");
+    writeFileSync(resolve(TEST_DIR, "SOUL.md"), "You are Eurisco.");
+    assert.equal(mem.readSoul(), "You are Eurisco.");
   });
 
   it("reads MEMORY.md", () => {

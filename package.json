@@ -13,7 +13,9 @@
     "start": "node dist/index.js",
     "dev": "tsc --watch & node --watch dist/index.js",
     "test": "node --test dist/**/*.test.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "dashboard": "npx tsx src/dashboard/index.ts",
+    "calendar-mine": "npx tsx src/people/calendar-mine.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

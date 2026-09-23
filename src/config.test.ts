@@ -18,7 +18,7 @@ describe("loadConfig", () => {
       ].join("\n")
     );
     writeFileSync(
-      resolve(TEST_DIR, "config", "kit.json"),
+      resolve(TEST_DIR, "config", "eurisco.json"),
       JSON.stringify({
         activeHours: { start: 6, end: 23 },
         heartbeatIntervalMinutes: 60,
@@ -38,7 +38,7 @@ describe("loadConfig", () => {
     delete process.env["TELEGRAM_OWNER_ID"];
   });
 
-  it("loads env vars and kit.json", () => {
+  it("loads env vars and eurisco.json", () => {
     const config = loadConfig(TEST_DIR);
     assert.equal(config.geminiApiKey, "test-gemini-key");
     assert.equal(config.telegramBotToken, "test-bot-token");

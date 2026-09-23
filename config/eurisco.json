@@ -12,5 +12,6 @@
     "hotDays": 14,
     "activeDays": 30,
     "coldDays": 90
-  }
+  },
+  "stravaSyncCron": "0 */2 * * *"
 }

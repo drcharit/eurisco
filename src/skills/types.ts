@@ -2,6 +2,7 @@ import type { FunctionDeclaration } from "@google/generative-ai";
 import type Database from "better-sqlite3";
 import type { MarkdownMemory } from "../memory/markdown.js";
 import type { GoogleAccount } from "../services/google-auth.js";
+import type { ACCredentials } from "../services/ac.js";
 
 export type ToolHandler = (args: Record<string, unknown>) => string | Promise<string>;
 
@@ -12,6 +13,7 @@ export interface ToolContext {
   googleAccounts: GoogleAccount[];
   amadeusClientId: string;
   amadeusClientSecret: string;
+  acCredentials: ACCredentials;
 }
 
 /**

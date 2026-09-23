@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   console.log(`Filter: bidirectional only (sent + received)`);
 
   // Phase 1: Scan last 2 years
-  const afterDate = "2024/03/08";
+  const afterDate = "2016/03/08";
   console.log(`\n=== Phase 1: Scan emails after ${afterDate} ===`);
 
   const candidates = await scanAndFilter(accounts, ownerEmails, afterDate, 10000);

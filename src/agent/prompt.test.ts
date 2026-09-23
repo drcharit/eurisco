@@ -21,7 +21,7 @@ describe("buildSystemPrompt", () => {
 
   it("includes default soul when SOUL.md missing", () => {
     const prompt = buildSystemPrompt(memory);
-    assert.ok(prompt.includes("Kit"));
+    assert.ok(prompt.includes("Eurisco") && prompt.includes("Kit"));
     assert.ok(prompt.includes("personal AI system"));
   });
 

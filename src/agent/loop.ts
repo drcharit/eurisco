@@ -21,52 +21,16 @@ export interface AgentDeps {
 
 export type StreamCallback = (chunk: string) => void;
 
-const REFLECT_PROMPT =
-  "Silently analyze the last conversation turn. Extract any new insights about Charit and save them using memory_save. " +
-  "Categories to look for:\n" +
-  "- TRAVEL: destinations, dates, plans, preferences (airlines, hotels, class)\n" +
-  "- INTERESTS: topics, hobbies, things he's curious about\n" +
-  "- WORK: projects, colleagues, decisions, deadlines\n" +
-  "- HEALTH: medical, fitness, diet mentions\n" +
-  "- PEOPLE: relationships, who he's meeting, context about contacts\n" +
-  "- PREFERENCES: communication style, tools, food, schedule habits\n" +
-  "- PLANS: upcoming events, goals, intentions\n\n" +
-  "Format each insight as: [CATEGORY] insight text\n" +
-  "Only save genuinely NEW information — skip if nothing new was learned. " +
-  "Do NOT repeat things already in memory. Do NOT respond to the user.";
+// Cache Gemini client (rebuilt only when API key changes)
+let cachedGenAI: GoogleGenerativeAI | null = null;
+let cachedApiKey = "";
 
-// Guard against re-entrant agentLoop calls (reflect/flush calling agentLoop)
-let internalCall = false;
-
-export async function reflect(deps: AgentDeps): Promise<void> {
-  const history = getHistory();
-  if (history.length < 2) return;
-
-  try {
-    console.log("[reflect] Analyzing conversation for insights...");
-    internalCall = true;
-    await agentLoop(deps, REFLECT_PROMPT, deps.config.models.fast);
-    console.log("[reflect] Done");
-  } catch (e) {
-    const err = e as Error;
-    console.log(`[reflect] Error: ${err.message}`);
-  } finally {
-    internalCall = false;
-  }
-}
-
-export async function backgroundFlush(_deps: AgentDeps): Promise<void> {
+export async function backgroundFlush(): Promise<void> {
   if (!needsFlush()) return;
   try {
-    console.log("[flush] Background memory flush...");
-    internalCall = true;
     await triggerFlush();
-    console.log("[flush] Done");
   } catch (e) {
-    const err = e as Error;
-    console.log(`[flush] Error: ${err.message}`);
-  } finally {
-    internalCall = false;
+    console.log(`[flush] Error: ${(e as Error).message}`);
   }
 }
 
@@ -110,25 +74,18 @@ export async function agentLoop(
   const t0 = performance.now();
   const { config, toolCtx, memory, registry } = deps;
   const handlers = registry.createHandlers(toolCtx);
-  const genai = new GoogleGenerativeAI(config.geminiApiKey);
-  const usedModel = model ?? config.models.smart;
+  const usedModel = model ?? config.models.fast;
 
-  // Skip flush/reflect re-entrancy
-  if (internalCall) {
-    // Already inside a reflect/flush call — just proceed without nesting
+  // Reuse Gemini client across calls
+  if (!cachedGenAI || cachedApiKey !== config.geminiApiKey) {
+    cachedGenAI = new GoogleGenerativeAI(config.geminiApiKey);
+    cachedApiKey = config.geminiApiKey;
   }
 
-  // Prune old tool results to save context
-  const pt = performance.now();
   pruneToolResults();
-  const pruneMs = performance.now() - pt;
-  if (pruneMs > 1) console.log(`[perf] prune: ${pruneMs.toFixed(0)}ms`);
 
-  const st = performance.now();
   const sysPrompt = buildSystemPrompt(memory, registry);
-  console.log(`[perf] buildPrompt: ${(performance.now() - st).toFixed(0)}ms`);
-
-  const genModel = genai.getGenerativeModel({
+  const genModel = cachedGenAI!.getGenerativeModel({
     model: usedModel,
     systemInstruction: sysPrompt,
     tools: [{ functionDeclarations: registry.getToolDeclarations() }],
@@ -141,17 +98,12 @@ export async function agentLoop(
     });
   }
 
-  // Add user message to history
   addToHistory({ role: "user", parts: messageParts });
 
-  // Start chat with prior history (exclude current message)
-  const ht = performance.now();
   const priorHistory = getHistory().slice(0, -1);
-  console.log(`[perf] history prep: ${(performance.now() - ht).toFixed(0)}ms (${priorHistory.length} entries)`);
-
   const chat = genModel.startChat({ history: priorHistory });
 
-  console.log(`[perf] setup total: ${(performance.now() - t0).toFixed(0)}ms | model=${usedModel}`);
+  console.log(`[perf] setup: ${(performance.now() - t0).toFixed(0)}ms | model=${usedModel} | history=${priorHistory.length}`);
 
   // Use streaming if callback provided
   let result: string;
@@ -254,20 +206,12 @@ async function streamingLoop(
       return fullText;
     }
 
-    // Execute tools, stream status
+    // Execute tools in parallel, stream status
     const toolNames = fnCalls.map((c) => c.name).join(", ");
     onStream(fullText + `\n_Using: ${toolNames}..._`);
     const tt = performance.now();
-    const fnResponses: Part[] = [];
-    for (const call of fnCalls) {
-      const toolT = performance.now();
-      const result = await executeTool(handlers, call.name, call.args);
-      console.log(`[perf]   tool ${call.name}: ${(performance.now() - toolT).toFixed(0)}ms`);
-      fnResponses.push({
-        functionResponse: { name: call.name, response: { result } },
-      });
-    }
-    console.log(`[perf] tools total: ${(performance.now() - tt).toFixed(0)}ms`);
+    const fnResponses = await executeTools(handlers, fnCalls);
+    console.log(`[perf] tools (${toolNames}): ${(performance.now() - tt).toFixed(0)}ms`);
 
     gt = performance.now();
     streamResult = await chat.sendMessageStream(fnResponses);
@@ -290,14 +234,16 @@ async function executeTools(
   handlers: Record<string, (args: Record<string, unknown>) => string | Promise<string>>,
   fnCalls: { name: string; args: Record<string, unknown> }[],
 ): Promise<Part[]> {
-  const results: Part[] = [];
-  for (const call of fnCalls) {
-    const result = await executeTool(handlers, call.name, call.args);
-    results.push({
-      functionResponse: { name: call.name, response: { result } },
-    });
-  }
-  return results;
+  // Execute all tool calls in parallel
+  const results = await Promise.all(
+    fnCalls.map(async (call) => {
+      const result = await executeTool(handlers, call.name, call.args);
+      return { name: call.name, result };
+    }),
+  );
+  return results.map((r) => ({
+    functionResponse: { name: r.name, response: { result: r.result } },
+  }));
 }
 
 async function executeTool(
@@ -320,12 +266,14 @@ function extractText(parts: Part[]): string {
   return texts.join("") || "(empty response)";
 }
 
-// Model routing: use smart for complex multi-step tasks
+// Model routing: Flash for most tasks, Pro only for complex reasoning
 export function routeModel(message: string, config: Config): string {
   const msg = message.toLowerCase();
-  const needsSmart = msg.includes("analyze") || msg.includes("compare")
-    || msg.includes("explain") || msg.includes("draft")
-    || msg.includes("write") || msg.includes("plan")
-    || msg.length > 300;
+  // Pro only for long-form composition or multi-step analysis
+  const needsSmart = (msg.includes("draft") && msg.includes("email"))
+    || msg.includes("analyze in detail")
+    || msg.includes("write a ")
+    || msg.includes("compare and recommend")
+    || msg.length > 500;
   return needsSmart ? config.models.smart : config.models.fast;
 }
